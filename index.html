@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Unicorn Flappy Flight - 4 Fases Mágicas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #1e1b4b;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        .font-fredoka { font-family: 'Fredoka One', cursive; }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 1rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-b from-indigo-950 via-purple-900 to-slate-900 text-white">
+
+    <!-- Container Principal do Jogo -->
+    <div id="gameContainer" class="relative w-full max-w-2xl bg-slate-900/60 p-2 rounded-2xl shadow-2xl border border-pink-500/30 backdrop-blur-md">
+        
+        <!-- Canvas do Jogo -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Tela Inicial (Menu) -->
+        <div id="startMenu" class="absolute inset-2 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-sm rounded-xl p-6 text-center z-10">
+            <div class="text-5xl mb-3 animate-bounce">🦄✨</div>
+            <h1 class="text-3xl sm:text-4xl font-fredoka text-transparent bg-clip-text bg-gradient-to-r from-pink-300 via-purple-300 to-indigo-300 mb-2">
+                Voo do Unicórnio
+            </h1>
+            <p class="text-slate-300 text-sm sm:text-base max-w-md mb-6">
+                Atravesse as <span class="text-yellow-300 font-bold">4 Fases do Céu</span>! Colete estrelas brilhantes e desvie das nuvens espalhadas pelo caminho.
+            </p>
+            <button id="startBtn" class="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-fredoka text-xl rounded-full shadow-lg shadow-pink-500/30 hover:scale-105 transition transform active:scale-95">
+                VOAR NO CÉU 🚀
+            </button>
+        </div>
+
+        <!-- Tela de Game Over -->
+        <div id="gameOverMenu" class="hidden absolute inset-2 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md rounded-xl p-6 text-center z-10">
+            <div class="text-4xl mb-2">💫☁️</div>
+            <h2 class="text-3xl font-fredoka text-pink-400 mb-4">Fim do Voo!</h2>
+            
+            <div class="bg-slate-800/80 p-6 rounded-2xl border border-pink-500/30 mb-6 min-w-[240px]">
+                <div class="text-slate-400 text-sm font-bold uppercase tracking-wider mb-1">Distância Voadora</div>
+                <div id="finalScore" class="text-4xl font-fredoka text-yellow-300 mb-3">0m</div>
+
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Fase Alcançada</div>
+                <div id="finalPhase" class="text-lg font-bold text-pink-300 mb-3">Fase 1: Céu dos Sonhos</div>
+                
+                <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Estrelas Coletadas</div>
+                <div id="finalStars" class="text-xl font-bold text-indigo-300">⭐ 0</div>
+            </div>
+
+            <button id="restartBtn" class="px-8 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-fredoka text-xl rounded-full shadow-lg hover:scale-105 transition transform active:scale-95">
+                VOAR DE NOVO 🔄
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- SINTETIZADOR DE ÁUDIO ---
+        class SoundEngine {
+            constructor() { this.ctx = null; }
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            playFlap() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+            playCollect() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(587.33, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1174.66, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+            playLevelUp() {
+                if (!this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.setValueAtTime(0.2, this.ctx.currentTime + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.08 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + idx * 0.08);
+                    osc.stop(this.ctx.currentTime + idx * 0.08 + 0.25);
+                });
+            }
+            playHit() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + 0.25);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        // --- CANVAS SETUP ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = Math.min(rect.width * 0.65, 550);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- CONFIGURAÇÃO DAS 4 FASES ---
+        const PHASES = [
+            {
+                level: 1,
+                name: 'Fase 1: Céu dos Sonhos',
+                minDist: 0,
+                skyColors: ['#38bdf8', '#c084fc', '#f472b6'],
+                cloudOuter: '#94a3b8',
+                cloudInner: '#cbd5e1',
+                eyeColor: '#7e22ce',
+                baseSpeed: 3.0,
+                spawnInterval: 1.25,
+                hasBgStars: false
+            },
+            {
+                level: 2,
+                name: 'Fase 2: Pôr do Sol Dourado',
+                minDist: 150,
+                skyColors: ['#f97316', '#ec4899', '#fde047'],
+                cloudOuter: '#a8a29e',
+                cloudInner: '#e7e5e4',
+                eyeColor: '#c2410c',
+                baseSpeed: 3.8,
+                spawnInterval: 1.05,
+                hasBgStars: false
+            },
+            {
+                level: 3,
+                name: 'Fase 3: Noite Estrelada',
+                minDist: 350,
+                skyColors: ['#0f172a', '#312e81', '#6d28d9'],
+                cloudOuter: '#64748b',
+                cloudInner: '#94a3b8',
+                eyeColor: '#facc15',
+                baseSpeed: 4.5,
+                spawnInterval: 0.9,
+                hasBgStars: true
+            },
+            {
+                level: 4,
+                name: 'Fase 4: Aurora Mágica',
+                minDist: 600,
+                skyColors: ['#064e3b', '#0d9488', '#8b5cf6'],
+                cloudOuter: '#5eead4',
+                cloudInner: '#ccfbf1',
+                eyeColor: '#be185d',
+                baseSpeed: 5.3,
+                spawnInterval: 0.78,
+                hasBgStars: true
+            }
+        ];
+
+        // Estrelinhas decorativas de fundo para fases noturnas
+        const bgStars = Array.from({ length: 45 }, () => ({
+            x: Math.random() * 1000,
+            y: Math.random() * 600,
+            size: Math.random() * 2 + 1,
+            blink: Math.random() * Math.PI * 2
+        }));
+
+        // --- VARIÁVEIS DE ESTADO ---
+        let gameState = 'MENU';
+        let isWaitingFirstInput = false;
+        let score = 0;
+        let starCount = 0;
+        let distance = 0;
+        let lastTime = 0;
+        let currentPhaseIndex = 0;
+        let phaseBannerTimer = 0;
+
+        const gravity = 0.4;
+        const flapImpulse = -7.2;
+
+        // --- HELPERS VISUAIS ---
+        function drawStarShape(ctx, cx, cy, spikes, outerRadius, innerRadius) {
+            let rot = Math.PI / 2 * 3;
+            let x = cx;
+            let y = cy;
+            let step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - outerRadius);
+            for (let i = 0; i < spikes; i++) {
+                x = cx + Math.cos(rot) * outerRadius;
+                y = cy + Math.sin(rot) * outerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+
+                x = cx + Math.cos(rot) * innerRadius;
+                y = cy + Math.sin(rot) * innerRadius;
+                ctx.lineTo(x, y);
+                rot += step;
+            }
+            ctx.lineTo(cx, cy - outerRadius);
+            ctx.closePath();
+        }
+
+        function drawFluffyCloudPath(ctx, scale) {
+            ctx.beginPath();
+            ctx.arc(0, 0, 18 * scale, 0, Math.PI * 2);
+            ctx.arc(-14 * scale, 4 * scale, 14 * scale, 0, Math.PI * 2);
+            ctx.arc(14 * scale, 4 * scale, 14 * scale, 0, Math.PI * 2);
+            ctx.arc(-7 * scale, -8 * scale, 13 * scale, 0, Math.PI * 2);
+            ctx.arc(8 * scale, -7 * scale, 13 * scale, 0, Math.PI * 2);
+            ctx.closePath();
+        }
+
+        // --- JOGADOR: UNICÓRNIO VOADOR ---
+        const player = {
+            x: 110,
+            y: 200,
+            width: 38,
+            height: 30,
+            vy: 0,
+            wingAngle: 0,
+            trail: [],
+
+            reset() {
+                this.x = canvas.width * 0.22;
+                this.y = canvas.height / 2 - 15;
+                this.vy = 0;
+                this.trail = [];
+            },
+
+            flap() {
+                if (gameState !== 'PLAYING') return;
+                if (isWaitingFirstInput) {
+                    isWaitingFirstInput = false;
+                }
+                this.vy = flapImpulse;
+                audio.playFlap();
+            },
+
+            update(delta) {
+                this.wingAngle += delta * 14;
+
+                if (isWaitingFirstInput) {
+                    // Flutua suavemente no centro enquanto aguarda o primeiro comando
+                    this.y = (canvas.height / 2 - 15) + Math.sin(Date.now() * 0.005) * 8;
+                    return;
+                }
+
+                this.vy += gravity;
+                this.y += this.vy;
+
+                // Rastro de Arco-Íris
+                this.trail.push({
+                    x: this.x + 6,
+                    y: this.y + this.height / 2,
+                    alpha: 0.9,
+                    hue: (Date.now() * 0.4) % 360
+                });
+
+                for (let i = this.trail.length - 1; i >= 0; i--) {
+                    this.trail[i].x -= 3;
+                    this.trail[i].alpha -= 0.04;
+                    if (this.trail[i].alpha <= 0) this.trail.splice(i, 1);
+                }
+
+                // Limites superior e inferior da tela
+                if (this.y < 10) {
+                    this.y = 10;
+                    this.vy = 0;
+                }
+                if (this.y + this.height > canvas.height - 10) {
+                    gameOver();
+                }
+            },
+
+            draw() {
+                // Rastro mágico
+                this.trail.forEach(p => {
+                    ctx.fillStyle = `hsla(${p.hue}, 95%, 70%, ${p.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                ctx.save();
+                ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+
+                // Inclinação suave conforme sobe ou desce
+                const tilt = isWaitingFirstInput ? 0 : Math.max(-0.45, Math.min(0.45, this.vy * 0.05));
+                ctx.rotate(tilt);
+
+                // Corpo do Unicórnio
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.ellipse(0, 2, 16, 11, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Crina Rosa/Lilás
+                ctx.fillStyle = '#f472b6';
+                ctx.beginPath();
+                ctx.arc(-8, -6, 6, 0, Math.PI * 2);
+                ctx.arc(-13, -1, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cabeça
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(12, -5, 9, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Chifre Dourado
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.moveTo(17, -11);
+                ctx.lineTo(27, -21);
+                ctx.lineTo(21, -7);
+                ctx.closePath();
+                ctx.fill();
+
+                // Olho
+                ctx.fillStyle = '#1e1b4b';
+                ctx.beginPath();
+                ctx.arc(15, -6, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Asa animada
+                const flapY = Math.sin(this.wingAngle) * 7;
+                ctx.fillStyle = '#fbcfe8';
+                ctx.beginPath();
+                ctx.moveTo(-2, 0);
+                ctx.quadraticCurveTo(-12, -16 + flapY, 4, -8 + flapY);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.restore();
+            }
+        };
+
+        // --- OBSTÁCULOS: NUVENS ESPALHADAS ---
+        const clouds = [];
+        const stars = [];
+        let spawnTimer = 0;
+
+        function spawnObstacle() {
+            const phase = PHASES[currentPhaseIndex];
+            const cloudY = Math.random() * (canvas.height - 100) + 50;
+            const radius = Math.random() * 15 + 25;
+
+            clouds.push({
+                x: canvas.width + 50,
+                y: cloudY,
+                radius: radius,
+                speedOffset: (Math.random() - 0.5) * 0.6,
+                verticalWave: phase.level >= 3 ? (Math.random() - 0.5) * 1.2 : 0
+            });
+
+            // Spawna estrela próxima ou entre os caminhos
+            if (Math.random() > 0.25) {
+                const starY = Math.random() * (canvas.height - 80) + 40;
+                stars.push({
+                    x: canvas.width + Math.random() * 40 + 50,
+                    y: starY,
+                    size: 11,
+                    floatOffset: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            starCount = 0;
+            distance = 0;
+            spawnTimer = 0;
+            currentPhaseIndex = 0;
+            phaseBannerTimer = 2.5;
+            isWaitingFirstInput = true;
+            clouds.length = 0;
+            stars.length = 0;
+            player.reset();
+        }
+
+        function gameOver() {
+            if (gameState === 'PLAYING') {
+                audio.playHit();
+                gameState = 'GAMEOVER';
+                document.getElementById('finalScore').innerText = `${Math.floor(distance)}m`;
+                document.getElementById('finalPhase').innerText = PHASES[currentPhaseIndex].name;
+                document.getElementById('finalStars').innerText = `⭐ ${starCount}`;
+                document.getElementById('gameOverMenu').classList.remove('hidden');
+            }
+        }
+
+        // --- LOOP PRINCIPAL ---
+        function update(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const delta = Math.min((timestamp - lastTime) / 1000, 0.1);
+            lastTime = timestamp;
+
+            if (gameState === 'PLAYING') {
+                player.update(delta);
+
+                if (phaseBannerTimer > 0) {
+                    phaseBannerTimer -= delta;
+                }
+
+                if (!isWaitingFirstInput) {
+                    distance += delta * 14;
+
+                    // Verifica mudança de fase
+                    let nextPhaseIndex = currentPhaseIndex;
+                    for (let i = PHASES.length - 1; i >= 0; i--) {
+                        if (distance >= PHASES[i].minDist) {
+                            nextPhaseIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (nextPhaseIndex > currentPhaseIndex) {
+                        currentPhaseIndex = nextPhaseIndex;
+                        phaseBannerTimer = 3.0;
+                        audio.playLevelUp();
+                    }
+
+                    const activePhase = PHASES[currentPhaseIndex];
+
+                    // Spawner de nuvens espalhadas
+                    spawnTimer += delta;
+                    if (spawnTimer > activePhase.spawnInterval) {
+                        spawnObstacle();
+                        spawnTimer = 0;
+                    }
+
+                    // Mover Nuvens Claras Espalhadas
+                    for (let i = clouds.length - 1; i >= 0; i--) {
+                        const c = clouds[i];
+                        c.x -= (activePhase.baseSpeed + c.speedOffset);
+                        c.y += Math.sin(Date.now() * 0.003 + i) * c.verticalWave;
+
+                        // Colisão Circular Precisa com as Nuvens Espalhadas
+                        const playerCenterX = player.x + player.width / 2;
+                        const playerCenterY = player.y + player.height / 2;
+                        const dist = Math.hypot(playerCenterX - c.x, playerCenterY - c.y);
+
+                        if (dist < c.radius + 12) {
+                            gameOver();
+                        }
+
+                        if (c.x < -80) clouds.splice(i, 1);
+                    }
+
+                    // Mover e Coletar Estrelas
+                    for (let i = stars.length - 1; i >= 0; i--) {
+                        const s = stars[i];
+                        s.x -= activePhase.baseSpeed;
+
+                        const dist = Math.hypot((player.x + player.width / 2) - s.x, (player.y + player.height / 2) - s.y);
+                        if (dist < s.size + 16) {
+                            starCount++;
+                            audio.playCollect();
+                            stars.splice(i, 1);
+                        } else if (s.x < -30) {
+                            stars.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // --- RENDERIZAÇÃO ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const activePhase = PHASES[currentPhaseIndex];
+
+            // Fundo de Céu Dinâmico conforme a Fase
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGrad.addColorStop(0, activePhase.skyColors[0]);
+            skyGrad.addColorStop(0.5, activePhase.skyColors[1]);
+            skyGrad.addColorStop(1, activePhase.skyColors[2]);
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Estrelas decorativas de fundo (Fases 3 e 4)
+            if (activePhase.hasBgStars) {
+                bgStars.forEach(bs => {
+                    const alpha = 0.4 + Math.sin(Date.now() * 0.004 + bs.blink) * 0.4;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(bs.x % canvas.width, bs.y % canvas.height, bs.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                // Estrelas Coletáveis
+                stars.forEach(s => {
+                    const floatY = Math.sin(Date.now() * 0.008 + s.floatOffset) * 5;
+                    ctx.save();
+                    ctx.translate(s.x, s.y + floatY);
+
+                    ctx.shadowColor = '#fde047';
+                    ctx.shadowBlur = 12;
+                    ctx.fillStyle = '#fde047';
+                    drawStarShape(ctx, 0, 0, 5, s.size, s.size * 0.4);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffffff';
+                    drawStarShape(ctx, 0, 0, 5, s.size * 0.5, s.size * 0.2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                // Nuvens Obstáculo (Espalhadas e com paleta da fase)
+                clouds.forEach(c => {
+                    ctx.save();
+                    ctx.translate(c.x, c.y);
+
+                    ctx.shadowColor = 'rgba(168, 85, 247, 0.35)';
+                    ctx.shadowBlur = 10;
+                    
+                    ctx.fillStyle = activePhase.cloudOuter;
+                    drawFluffyCloudPath(ctx, c.radius / 20);
+                    ctx.fill();
+
+                    ctx.fillStyle = activePhase.cloudInner;
+                    drawFluffyCloudPath(ctx, (c.radius - 6) / 20);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Olhos fofos
+                    ctx.fillStyle = activePhase.eyeColor;
+                    ctx.beginPath();
+                    ctx.arc(-6, -2, 3, 0, Math.PI * 2);
+                    ctx.arc(6, -2, 3, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                });
+
+                // Jogador
+                player.draw();
+
+                // HUD Superior
+                ctx.font = 'bold 20px "Fredoka One"';
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = 'rgba(0,0,0,0.4)';
+                ctx.shadowBlur = 4;
+                ctx.textAlign = 'left';
+                ctx.fillText(`📏 ${Math.floor(distance)}m`, 20, 34);
+
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 16px "Fredoka One"';
+                ctx.fillStyle = '#fef08a';
+                ctx.fillText(activePhase.name, canvas.width / 2, 32);
+
+                ctx.textAlign = 'right';
+                ctx.font = 'bold 20px "Fredoka One"';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(`⭐ ${starCount}`, canvas.width - 20, 34);
+
+                // Banner Animado de Nova Fase
+                if (phaseBannerTimer > 0 && !isWaitingFirstInput && gameState === 'PLAYING') {
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.font = 'bold 28px "Fredoka One"';
+                    ctx.fillStyle = '#fde047';
+                    ctx.shadowColor = '#ec4899';
+                    ctx.shadowBlur = 12;
+                    ctx.fillText(`✨ ${activePhase.name} ✨`, canvas.width / 2, canvas.height * 0.28);
+                    ctx.restore();
+                }
+
+                // Mensagem de "Pressione para voar" quando estiver no início parado
+                if (isWaitingFirstInput && gameState === 'PLAYING') {
+                    ctx.save();
+                    ctx.font = 'bold 18px "Fredoka One"';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = '#ec4899';
+                    ctx.shadowBlur = 8;
+                    ctx.fillText('Clique ou Pressione Espaço para Voar! 🦄', canvas.width / 2, canvas.height / 2 + 50);
+                    ctx.restore();
+                }
+            }
+        }
+
+        // --- CONTROLES E EVENTOS ---
+        function handleAction(e) {
+            if (e && e.target && e.target.tagName === 'BUTTON') return;
+            if (gameState === 'PLAYING') {
+                if (e && e.cancelable) e.preventDefault();
+                player.flap();
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                handleAction(e);
+            }
+        });
+
+        canvas.addEventListener('mousedown', handleAction);
+        canvas.addEventListener('touchstart', handleAction, { passive: false });
+
+        document.getElementById('startBtn').addEventListener('click', () => {
+            audio.init();
+            document.getElementById('startMenu').classList.add('hidden');
+            resetGame();
+            gameState = 'PLAYING';
+        });
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            document.getElementById('gameOverMenu').classList.add('hidden');
+            resetGame();
+            gameState = 'PLAYING';
+        });
+
+        // Iniciar loop de animação
+        window.onload = function() {
+            resizeCanvas();
+            requestAnimationFrame(update);
+        };
+    </script>
+</body>
+</html>
